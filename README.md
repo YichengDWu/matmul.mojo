@@ -12,7 +12,8 @@ git clone https://github.com/YichengDWu/matmul.mojo.git
 ```
 3. Run `benchmark.mojo`
 ```sh
-mojo run -I src matmul_benchmark.mojo
+export OMP_NUM_THREADS=6 # the number of performance cores on your machine
+mojo run -I src benchmark_matmul.mojo
 ```
 
 # Results
@@ -43,7 +44,7 @@ CPU info:
 
 Notes:
  - Hyberthreading is disabled.
- - Mojo only utilizes performance cores, while `numpy` utilizes all cores.
+ - `matmul.mojo`, `numpy` and the Max engine all utilize only performance cores.
  - I use new matrices for each matrix multiplication instead of repeatedly iterating over the same matrices. This avoids the unrealistic assumption of high cache hit rates that may not occur in real-world scenarios.
  - You might want to change the parameters `L1_ASSOCIATIVITY`, `L1_CACHE_SIZE`, `L2_ASSOCIATIVITY` and `L2_CACHE_SIZE` according to your cache topology.
  - My implementation might assume that matrices A and B are row-major in some parts. I haven't thoroughly verified this. If you intend to compute A*B^T (as commonly in neural networks), it might not produce the correct results.
