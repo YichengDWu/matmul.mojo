@@ -39,7 +39,7 @@ CPU info:
   Hypervisor         No                                                    
 ```
 
-![](benchmark_results.png)
+![](benchmark_results.svg)
 
 
 Notes:

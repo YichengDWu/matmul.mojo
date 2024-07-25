@@ -245,31 +245,34 @@ def main():
 
     matmul_flops = benchmark_matmul()
     plt.plot(
-        sizes, to_python_list(matmul_flops[0]), label="matmul.mojo Mean GFLOPS"
+        sizes, to_python_list(matmul_flops[0]), "-*", label="matmul.mojo Mean"
     )
     plt.plot(
-        sizes, to_python_list(matmul_flops[1]), label="matmul.mojo Peak GFLOPS"
+        sizes, to_python_list(matmul_flops[1]),  "-*", label="matmul.mojo Peak"
     )
 
     numpy_flops = benchmark_numpy()
     plt.plot(
         sizes,
         to_python_list(numpy_flops[0]),
-        label="numpy(OpenBLAS) Mean GFLOPS",
+         "-*", 
+        label="numpy(OpenBLAS) Mean",
     )
     plt.plot(
         sizes,
         to_python_list(numpy_flops[1]),
-        label="numpy(OpenBLAS) Peak GFLOPS",
+         "-*", 
+        label="numpy(OpenBLAS) Peak",
     )
 
     max_flops = benchmark_max()
-    plt.plot(sizes, to_python_list(max_flops[0]), label="Max Mean GFLOPS")
-    plt.plot(sizes, to_python_list(max_flops[1]), label="Max Peak GFLOPS")
+    plt.plot(sizes, to_python_list(max_flops[0]),  "-*", label="MAX Engine Mean")
+    plt.plot(sizes, to_python_list(max_flops[1]),  "-*", label="MAX Engine Peak")
 
     fig_ax[1].set_xlabel("Matrix Size")
     fig_ax[1].set_ylabel("GFLOP/s")
-    fig_ax[1].legend()
+    fig_ax[1].legend(fontsize=12, loc="lower right")
     fig_ax[1].grid()
+    fig_ax[1].set_title("Matrix Multiplication Benchmark")
     plt.show()
-    fig_ax[0].savefig("benchmark_results.png")
+    fig_ax[0].savefig("benchmark_results.svg")
