@@ -71,11 +71,6 @@ struct Matrix[Type: DType]:
         self.layout = layout
 
     @always_inline("nodebug")
-    fn __init__(inout self, data: DTypePointer[Type], owned layout: Layout):
-        self.data = UnsafePointer[Scalar[Type],]._from_dtype_ptr(data)
-        self.layout = layout
-
-    @always_inline("nodebug")
     fn __init__(
         inout self, data: UnsafePointer[Scalar[Type]], shape: (Int, Int)
     ):
