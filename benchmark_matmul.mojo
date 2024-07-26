@@ -63,12 +63,13 @@ def benchmark_matmul() -> Tuple[List[Int], List[Int]]:
         var avg_time = Float64(0.0)
         var min_time = Float64.MAX
 
-        var A = Matrix[Type]((size, size))
-        var B = Matrix[Type]((size, size))
-        var C = Matrix[Type]((size, size))
-        var C_correct = Matrix[Type]((size, size))
 
         # test correctness
+        #var A = Matrix[Type]((size, size))
+        #var B = Matrix[Type]((size, size))
+        #var C = Matrix[Type]((size, size))
+        #var C_correct = Matrix[Type]((size, size))
+
         # A.rand()
         # B.rand()
         # memset_zero(C.data, size*size)
