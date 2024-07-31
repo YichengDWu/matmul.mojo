@@ -6,14 +6,16 @@ Matmul.🔥 is a high performance muilti-threaded implimentation of the [BLIS](h
 # Installation and Benchmark
 
 1. Install [Max/Nightly](https://docs.modular.com/max/install#install-max).
-2. Clone the repository:
+2. Install [Magic](https://docs.google.com/document/d/1zzZC6Kl7Le3Pd124aRb9uXr48APaWKhKBZeISm7s-qs/edit#heading=h.jyh6j2yblt83)
+3. Clone the repository:
 ```sh
 git clone https://github.com/YichengDWu/matmul.mojo.git
 ```
-3. Run `benchmark.mojo`
+4. Install the dependencies by running `magic install`
+5. Run `benchmark.mojo`
 ```sh
-export OMP_NUM_THREADS=6 # the number of performance cores on your machine
-mojo run -I src benchmark_matmul.mojo
+magic run export OMP_NUM_THREADS=6 # the number of performance cores on your machine
+magic run mojo run -I src benchmark_matmul.mojo
 ```
 
 # Results
