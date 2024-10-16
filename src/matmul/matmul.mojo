@@ -3,6 +3,11 @@ from memory.memory import _malloc
 from sys import has_avx512f, num_performance_cores
 import benchmark
 from testing import assert_equal
+from sys.info import simdwidthof, sizeof
+from memory import stack_allocation
+from utils.index import StaticIntTuple
+from collections import InlineArray
+import random
 
 
 @always_inline
@@ -109,9 +114,9 @@ struct Matrix[Type: DType]:
 
         @parameter
         if dim == 0:
-            return ptr.simd_strided_load[width=width](self.layout.strides[0])
+            return ptr.strided_load[width=width](self.layout.strides[0])
         else:
-            return SIMD[Type, width].load(ptr)
+            return ptr.load[Type, width]()
 
     @always_inline("nodebug")
     fn store[
@@ -122,9 +127,9 @@ struct Matrix[Type: DType]:
 
         @parameter
         if dim == 0:
-            ptr.simd_strided_store[width=width](value, self.layout.strides[0])
+            ptr.strided_store[width=width](value, self.layout.strides[0])
         else:
-            SIMD[Type, width].store(ptr, value)
+            ptr.store[Type, width](value)
 
     fn format_to(self, inout writer: Formatter):
         writer.write(
@@ -154,9 +159,8 @@ fn pack_A[
 
             @parameter
             fn pack_col[width: Int](l: Int):
-                SIMD[Type, width].store(
-                    dst_ptr + l,
-                    (src_ptr + l * Ac.stride[0]()).simd_strided_load[
+                (dst_ptr + l).store[Type, width](
+                    (src_ptr + l * Ac.stride[0]()).strided_load[
                         width=width
                     ](Ac.stride[0]()),
                 )
@@ -190,11 +194,10 @@ fn pack_B[
 
             @parameter
             fn pack_row[width: Int](l: Int):
-                SIMD[Type, width].store[
+                (dst_ptr + l).store[Type, width][
                     alignment = sizeof[Type]() * simdwidthof[Type]()
                 ](
-                    dst_ptr + l,
-                    SIMD[Type, width].load(src_ptr + l),
+                    (src_ptr + l).load[Type, width](),
                 )
 
             vectorize[
@@ -224,8 +227,8 @@ fn matmul_impl[
     mr: Int,
     nr: Int,
 ](inout C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
-    var Ac_buffer = _malloc[Scalar[Type]](
-        mc * kc * sizeof[Type](), alignment=64
+    var Ac_buffer = _malloc[Scalar[Type], alignment=64](
+        mc * kc * sizeof[Type]()
     )
 
     var M = C.shape[0]()
@@ -270,8 +273,8 @@ fn loop_n[
     @parameter
     fn parallelize_balanced_part(idx: Int):
         var Bc_buffer = UnsafePointer[Scalar[Type]](
-            _malloc[Scalar[Type]](
-                kc * nc_per_thread * sizeof[Type](), alignment=64
+            _malloc[Scalar[Type], alignment=64](
+                kc * nc_per_thread * sizeof[Type]()
             )
         )
 
@@ -293,8 +296,8 @@ fn loop_n[
     @parameter
     fn parallelize_remainder(idx: Int):
         var Bc_buffer = UnsafePointer[Scalar[Type]](
-            _malloc[Scalar[Type]](
-                kc * remainder_per_thread * sizeof[Type](), alignment=64
+            _malloc[Scalar[Type], alignment=64](
+                kc * remainder_per_thread * sizeof[Type]()
             )
         )
         var j = balanced_part + idx * remainder_per_thread
@@ -372,11 +375,8 @@ fn micro_kernel[
 
                 @parameter
                 fn load_col[width: Int](j: Int):
-                    SIMD[Type, width].store(
-                        cr_ptr + (i * nr + j),
-                        SIMD[Type, width].load(
-                            Cr_ptr + (i * Cr.stride[0]() + j)
-                        ),
+                    (cr_ptr + (i * nr + j)).store[Type, width](
+                        (Cr_ptr + (i * Cr.stride[0]() + j)).load[Type, width](),
                     )
 
                 vectorize[load_col, simd_width](Cr.shape[1]())
@@ -387,20 +387,17 @@ fn micro_kernel[
 
             @parameter
             for j in range(0, nr, simd_width):
-                SIMD[Type, size=simd_width].store(
-                    cr_ptr + i * nr + j,
-                    SIMD[Type, size=simd_width].load(
-                        Cr_ptr + (i * Cr.stride[0]() + j)
-                    ),
+                (cr_ptr + i * nr + j).store[Type, simd_width](
+                    (Cr_ptr + (i * Cr.stride[0]() + j)).load[Type, simd_width](),
                 )
 
     for _ in range(Ar.shape[1]()):
 
         @parameter
         for j in range(0, nr, simd_width):
-            br[j // simd_width] = SIMD[Type, size=simd_width].load[
-                alignment = sizeof[Type]() * simdwidthof[Type]()
-            ](Br_ptr + j)
+            br[j // simd_width] = (Br_ptr + j).load[
+                Type, simd_width, alignment = sizeof[Type]() * simdwidthof[Type]()
+            ]()
 
         @parameter
         for i in range(mr):
@@ -408,11 +405,10 @@ fn micro_kernel[
             @parameter
             for j in range(0, nr, simd_width):
                 ar = SIMD[Type, size=simd_width](Ar_ptr[])
-                SIMD[Type, size=simd_width].store(
-                    cr_ptr,
+                cr_ptr.store[Type, simd_width](
                     ar.fma(
                         br[j // simd_width],
-                        SIMD[Type, size=simd_width].load(cr_ptr),
+                        cr_ptr.load[Type, simd_width](),
                     ),
                 )
                 cr_ptr += simd_width
@@ -430,9 +426,8 @@ fn micro_kernel[
 
                 @parameter
                 fn store_row[width: Int](j: Int):
-                    SIMD[Type, width].store(
-                        Cr_ptr + (i * Cr.stride[0]() + j),
-                        SIMD[Type, width].load(cr_ptr + (i * nr + j)),
+                    (Cr_ptr + (i * Cr.stride[0]() + j)).store[Type, width](
+                        (cr_ptr + (i * nr + j)).load[Type, width](),
                     )
 
                 vectorize[store_row, simd_width](Cr.shape[1]())
@@ -443,9 +438,8 @@ fn micro_kernel[
 
             @parameter
             for j in range(0, nr, simd_width):
-                SIMD[Type, size=simd_width].store(
-                    Cr_ptr + (i * Cr.stride[0]() + j),
-                    SIMD[Type, size=simd_width].load(cr_ptr + (i * nr + j)),
+                (Cr_ptr + (i * Cr.stride[0]() + j)).store[Type, simd_width](
+                    (cr_ptr + (i * nr + j)).load[Type, simd_width](),
                 )
 
 
