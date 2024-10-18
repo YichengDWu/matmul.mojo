@@ -6,6 +6,7 @@ from max.engine import Model, InferenceSession
 from max import graph
 from max.tensor import Tensor, TensorShape
 from testing import assert_equal
+from python import Python, PythonObject
 
 
 alias MIN_SIZE = 200
