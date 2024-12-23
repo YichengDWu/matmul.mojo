@@ -1,11 +1,10 @@
 from algorithm import vectorize, parallelize
-from memory.memory import _malloc
-from sys import has_avx512f, num_performance_cores
+from memory.memory import _malloc, stack_allocation
+from memory import UnsafePointer
+from sys import has_avx512f, num_performance_cores, simdwidthof, sizeof
 import benchmark
 from testing import assert_equal
-from sys.info import simdwidthof, sizeof
-from memory import stack_allocation
-from utils.index import StaticIntTuple
+from utils import IndexList
 from collections import InlineArray
 import random
 
@@ -36,16 +35,16 @@ fn intsqrt[n: Int]() -> Int:
 @value
 @register_passable("trivial")
 struct Layout:
-    var shape: StaticIntTuple[2]
-    var strides: StaticIntTuple[2]
+    var shape: IndexList[2]
+    var strides: IndexList[2]
 
-    fn __init__(inout self, shape: (Int, Int), strides: (Int, Int)):
-        self.shape = StaticIntTuple[2](shape[0], shape[1])
-        self.strides = StaticIntTuple[2](strides[0], strides[1])
+    fn __init__(mut self, shape: (Int, Int), strides: (Int, Int)):
+        self.shape = IndexList[2](shape[0], shape[1])
+        self.strides = IndexList[2](strides[0], strides[1])
 
-    fn __init__(inout self, shape: (Int, Int)):
-        self.strides = StaticIntTuple[2](shape[1], 1)
-        self.shape = StaticIntTuple[2](shape[0], shape[1])
+    fn __init__(mut self, shape: (Int, Int)):
+        self.strides = IndexList[2](shape[1], 1)
+        self.shape = IndexList[2](shape[0], shape[1])
 
     @always_inline("nodebug")
     fn __call__(self, i: Int, j: Int) -> Int:
@@ -56,7 +55,7 @@ struct Layout:
         return self.shape[0] * self.shape[1]
 
     @always_inline("nodebug")
-    fn format_to(self, inout writer: Formatter):
+    fn write_to[W: Writer](self, mut writer: W):
         writer.write(self.shape, ":", self.strides, "\n")
 
 
@@ -64,20 +63,20 @@ struct Matrix[Type: DType]:
     var data: UnsafePointer[Scalar[Type]]
     var layout: Layout
 
-    fn __init__(inout self, shape: (Int, Int)):
+    fn __init__(mut self, shape: (Int, Int)):
         self.data = UnsafePointer[Scalar[Type]].alloc(shape[0] * shape[1])
         self.layout = Layout(shape)
 
     @always_inline("nodebug")
     fn __init__(
-        inout self, data: UnsafePointer[Scalar[Type]], owned layout: Layout
+        mut self, data: UnsafePointer[Scalar[Type]], owned layout: Layout
     ):
         self.data = UnsafePointer[Scalar[Type]](data)
         self.layout = layout
 
     @always_inline("nodebug")
     fn __init__(
-        inout self, data: UnsafePointer[Scalar[Type]], shape: (Int, Int)
+        mut self, data: UnsafePointer[Scalar[Type]], shape: (Int, Int)
     ):
         self.data = data
         self.layout = Layout(shape)
@@ -85,7 +84,7 @@ struct Matrix[Type: DType]:
     @always_inline("nodebug")
     fn __getitem__(
         ref [_]self, i: Int, j: Int
-    ) -> ref [__lifetime_of(self)] Scalar[Type]:
+    ) -> ref [__origin_of(self)] Scalar[Type]:
         var offset = self.layout(i, j)
         return (self.data + offset)[]
 
@@ -104,7 +103,7 @@ struct Matrix[Type: DType]:
     fn stride[dim: Int](self) -> Int:
         return self.layout.strides[dim]
 
-    fn rand(inout self):
+    fn rand(mut self):
         random.rand(self.data, self.layout.size())
 
     @always_inline("nodebug")
@@ -116,7 +115,7 @@ struct Matrix[Type: DType]:
         if dim == 0:
             return ptr.strided_load[width=width](self.layout.strides[0])
         else:
-            return ptr.load[Type, width]()
+            return ptr.load[width=width]()
 
     @always_inline("nodebug")
     fn store[
@@ -129,9 +128,9 @@ struct Matrix[Type: DType]:
         if dim == 0:
             ptr.strided_store[width=width](value, self.layout.strides[0])
         else:
-            ptr.store[Type, width](value)
+            ptr.store(value)
 
-    fn format_to(self, inout writer: Formatter):
+    fn write_to[W: Writer](self, mut writer: W):
         writer.write(
             "Matrix: ",
             str(self.data),
@@ -159,7 +158,7 @@ fn pack_A[
 
             @parameter
             fn pack_col[width: Int](l: Int):
-                (dst_ptr + l).store[Type, width](
+                (dst_ptr + l).store(
                     (src_ptr + l * Ac.stride[0]()).strided_load[
                         width=width
                     ](Ac.stride[0]()),
@@ -194,10 +193,10 @@ fn pack_B[
 
             @parameter
             fn pack_row[width: Int](l: Int):
-                (dst_ptr + l).store[Type, width][
+                (dst_ptr + l).store[
                     alignment = sizeof[Type]() * simdwidthof[Type]()
                 ](
-                    (src_ptr + l).load[Type, width](),
+                    (src_ptr + l).load[width=width](),
                 )
 
             vectorize[
@@ -226,7 +225,7 @@ fn matmul_impl[
     kc: Int,
     mr: Int,
     nr: Int,
-](inout C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
+](mut C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
     var Ac_buffer = _malloc[Scalar[Type], alignment=64](
         mc * kc * sizeof[Type]()
     )
@@ -255,7 +254,7 @@ fn loop_n[
     kc: Int,
     mr: Int,
     nr: Int,
-](inout C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
+](mut C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
     var max_threads = num_performance_cores()
     var nc_per_thread = nc if nc * max_threads <= B.shape[1]() else rounddown(
         B.shape[1]() // max_threads, nr
@@ -325,7 +324,7 @@ fn macro_kernel[
     Type: DType, //,
     mr: Int,
     nr: Int,
-](inout Cc: Matrix[Type], Ac: Matrix[Type], Bc: Matrix[Type]):
+](mut Cc: Matrix[Type], Ac: Matrix[Type], Bc: Matrix[Type]):
     @parameter
     fn parallelize_ir(idx: Int):
         var ir = idx * mr
@@ -352,7 +351,7 @@ fn macro_kernel[
 @always_inline
 fn micro_kernel[
     Type: DType, //, mr: Int, nr: Int, padding: Bool
-](inout Cr: Matrix[Type], Ar: Matrix[Type], Br: Matrix[Type]):
+](mut Cr: Matrix[Type], Ar: Matrix[Type], Br: Matrix[Type]):
     alias simd_width = simdwidthof[Type]()
     constrained[nr % simd_width == 0, "nr must be multiple of simd_width"]()
 
@@ -375,8 +374,8 @@ fn micro_kernel[
 
                 @parameter
                 fn load_col[width: Int](j: Int):
-                    (cr_ptr + (i * nr + j)).store[Type, width](
-                        (Cr_ptr + (i * Cr.stride[0]() + j)).load[Type, width](),
+                    (cr_ptr + (i * nr + j)).store(
+                        (Cr_ptr + (i * Cr.stride[0]() + j)).load[width=width](),
                     )
 
                 vectorize[load_col, simd_width](Cr.shape[1]())
@@ -387,8 +386,8 @@ fn micro_kernel[
 
             @parameter
             for j in range(0, nr, simd_width):
-                (cr_ptr + i * nr + j).store[Type, simd_width](
-                    (Cr_ptr + (i * Cr.stride[0]() + j)).load[Type, simd_width](),
+                (cr_ptr + i * nr + j).store(
+                    (Cr_ptr + (i * Cr.stride[0]() + j)).load[width=simd_width](),
                 )
 
     for _ in range(Ar.shape[1]()):
@@ -396,7 +395,7 @@ fn micro_kernel[
         @parameter
         for j in range(0, nr, simd_width):
             br[j // simd_width] = (Br_ptr + j).load[
-                Type, simd_width, alignment = sizeof[Type]() * simdwidthof[Type]()
+                width=simd_width, alignment = sizeof[Type]() * simdwidthof[Type]()
             ]()
 
         @parameter
@@ -405,10 +404,10 @@ fn micro_kernel[
             @parameter
             for j in range(0, nr, simd_width):
                 ar = SIMD[Type, size=simd_width](Ar_ptr[])
-                cr_ptr.store[Type, simd_width](
+                cr_ptr.store(
                     ar.fma(
                         br[j // simd_width],
-                        cr_ptr.load[Type, simd_width](),
+                        cr_ptr.load[width=simd_width](),
                     ),
                 )
                 cr_ptr += simd_width
@@ -426,8 +425,8 @@ fn micro_kernel[
 
                 @parameter
                 fn store_row[width: Int](j: Int):
-                    (Cr_ptr + (i * Cr.stride[0]() + j)).store[Type, width](
-                        (cr_ptr + (i * nr + j)).load[Type, width](),
+                    (Cr_ptr + (i * Cr.stride[0]() + j)).store(
+                        (cr_ptr + (i * nr + j)).load[width=width](),
                     )
 
                 vectorize[store_row, simd_width](Cr.shape[1]())
@@ -438,12 +437,12 @@ fn micro_kernel[
 
             @parameter
             for j in range(0, nr, simd_width):
-                (Cr_ptr + (i * Cr.stride[0]() + j)).store[Type, simd_width](
-                    (cr_ptr + (i * nr + j)).load[Type, simd_width](),
+                (Cr_ptr + (i * Cr.stride[0]() + j)).store(
+                    (cr_ptr + (i * nr + j)).load[width=simd_width](),
                 )
 
 
-fn matmul_params[Type: DType]() -> StaticIntTuple[5]:
+fn matmul_params[Type: DType]() -> IndexList[5]:
     alias mc = 8192 // sizeof[Type]()  # fix this for simplicity
     alias N = simdwidthof[Type]()
     alias L1_ASSOCIATIVITY = 12
@@ -459,7 +458,7 @@ fn matmul_params[Type: DType]() -> StaticIntTuple[5]:
         return (CBr * L1_CACHE_SIZE) // (nr * sizeof[Type]() * L1_ASSOCIATIVITY)
 
     @parameter
-    fn compute_params[C: Int]() -> StaticIntTuple[5]:
+    fn compute_params[C: Int]() -> IndexList[5]:
         alias p = C // (intsqrt[C]() + 1)
         alias mr = C // p - 1
         alias nr = p * N
@@ -468,7 +467,7 @@ fn matmul_params[Type: DType]() -> StaticIntTuple[5]:
         alias nc = (L2_ASSOCIATIVITY - 1) * L2_CACHE_SIZE // (
             kc * sizeof[Type]() * L2_ASSOCIATIVITY
         ) - mr
-        return StaticIntTuple[5](mc, nc, kc, mr, nr)
+        return IndexList[5](mc, nc, kc, mr, nr)
 
     @parameter
     if Type.is_floating_point():
@@ -496,7 +495,7 @@ fn matmul[
     m: Int,
     n: Int,
     k: Int,
-](inout C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
+](mut C: Matrix[Type], A: Matrix[Type], B: Matrix[Type]):
     alias params = matmul_params[Type]()
     alias mc = params[0]
     alias nc = params[1]
