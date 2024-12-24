@@ -38,11 +38,11 @@ struct Layout:
     var shape: IndexList[2]
     var strides: IndexList[2]
 
-    fn __init__(mut self, shape: (Int, Int), strides: (Int, Int)):
+    fn __init__(out self, shape: (Int, Int), strides: (Int, Int)):
         self.shape = IndexList[2](shape[0], shape[1])
         self.strides = IndexList[2](strides[0], strides[1])
 
-    fn __init__(mut self, shape: (Int, Int)):
+    fn __init__(out self, shape: (Int, Int)):
         self.strides = IndexList[2](shape[1], 1)
         self.shape = IndexList[2](shape[0], shape[1])
 
@@ -63,20 +63,20 @@ struct Matrix[Type: DType]:
     var data: UnsafePointer[Scalar[Type]]
     var layout: Layout
 
-    fn __init__(mut self, shape: (Int, Int)):
+    fn __init__(out self, shape: (Int, Int)):
         self.data = UnsafePointer[Scalar[Type]].alloc(shape[0] * shape[1])
         self.layout = Layout(shape)
 
     @always_inline("nodebug")
     fn __init__(
-        mut self, data: UnsafePointer[Scalar[Type]], owned layout: Layout
+        out self, data: UnsafePointer[Scalar[Type]], owned layout: Layout
     ):
         self.data = UnsafePointer[Scalar[Type]](data)
         self.layout = layout
 
     @always_inline("nodebug")
     fn __init__(
-        mut self, data: UnsafePointer[Scalar[Type]], shape: (Int, Int)
+        out self, data: UnsafePointer[Scalar[Type]], shape: (Int, Int)
     ):
         self.data = data
         self.layout = Layout(shape)
