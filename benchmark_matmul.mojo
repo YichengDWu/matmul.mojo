@@ -1,12 +1,11 @@
 import benchmark
-from python import Python
+from python import Python, PythonObject
 from matmul import matmul, Matrix
 from max.graph import Graph, TensorType
 from max.engine import Model, InferenceSession
 from max import graph
 from max.tensor import Tensor, TensorShape
 from testing import assert_equal
-from python import Python, PythonObject
 
 
 alias MIN_SIZE = 200
